@@ -1,0 +1,215 @@
+---
+title: "Proyecto Final - Red neuronal"
+author: "Casillas, A., González, L., Gómez, J."
+date: "Agosto 2,2020"
+output: rmarkdown::github_document
+---
+
+# Red Neuronal #
+
+Equipo:
+
+* Anna Karen Casillas
+* Josue Emmnanuel Gomez
+* Luis Francisco Gonzalez
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.path = "figure/imgs/README_figs/README-")
+```
+
+## Variables y Dependencias Iniciales
+
+Aqui se especifican las variables generales necesarias para todo el proyecto
+
+```{r}
+#Modificar variable para especificar directorio del Proyecto Final
+user.path <- "/Users/akcasill/Documents/analisisDatos/proyecto/mcc-analisisdatos-final"
+
+local.path <- paste(user.path ,"/data",sep = "")
+local.path.imgs <- paste(user.path ,"/imgs",sep = "")
+```
+Aqui se especifican todas las dependencias que se utilizaran en el proyecto
+
+```{r}
+#Dependencies
+#install.packages("png")
+library(png)
+library(corrplot)
+source("http://www.sthda.com/upload/rquery_cormat.r")
+col<- colorRampPalette(c("blue", "white", "red"))(20)
+#install.packages("factoextra")
+#install.packages("FactoMineR")
+library(FactoMineR)
+library(factoextra)
+#install.packages('neuralnet')
+library(neuralnet)
+```
+
+Cargamos los datos
+
+```{r}
+setwd(local.path)
+load("alumnos.training.R")
+#alumnos.training
+head(alumnos.training,3)
+load("alumnos.test.R")
+#alumnos.test
+head(alumnos.test,3)
+
+```
+
+
+```{r}
+str(alumnos.training)
+```
+ 
+ 
+ 
+## Formula 1 ##
+ 
+```{r}
+formula1 <- desercion ~ .
+```
+
+## Neural Net ##
+
+```{r}
+set.seed(1234)
+neural.net.1 <- neuralnet(formula = formula1, 
+                          data  = alumnos.training,
+                          hidden = c(16,5,5), #numero de capas iniciales, medias y finales 
+                          threshold = 0.005, #el threshold del perceptron para arrojar una salida iniciamos con 0.01
+                          stepmax = 1e+07, #la cantidad de veces q lo queremos correr
+                          lifesign = "full") # para ver q hace R
+```
+
+## Grafica de la Red Neuronal ##
+
+```{r}
+class(neural.net.1)
+plot(neural.net.1)
+```
+
+
+## Testing ##
+
+probando con alumnos.test
+
+```{r}
+nn.result <- compute(neural.net.1, alumnos.test)
+attributes(nn.result)
+#nn.result$net.result
+head(nn.result$net.result,5)
+```
+
+
+## Matríz de confusión
+```{r}
+rounded.prediction <- round(nn.result$net.result)
+error <- vector(mode="numeric", length=nrow(rounded.prediction))
+compare.output <-  cbind(alumnos.test$desercion, rounded.prediction, error)
+colnames(compare.output) <- c("entrada","prediccion","error")
+compare.output <- as.data.frame(compare.output)
+
+mzc.true.positives <- 0
+mzc.true.negatives <- 0
+mzc.false.positives <- 0
+mzc.false.negatives <- 0
+
+for(i in 1:200){
+
+        if (compare.output[i,]$entrada == 1){
+                
+                if(compare.output[i,]$prediccion == 1){
+                        mzc.true.positives <- mzc.true.positives + 1
+                }
+                else{
+                        mzc.false.positives <- mzc.false.positives + 1
+                }
+        }
+        else{
+                if(compare.output[i,]$prediccion == 0){
+                        mzc.true.negatives <- mzc.true.negatives + 1
+                }
+                else{
+                         mzc.false.negatives <- mzc.false.negatives + 1
+                }
+                
+        }
+}
+
+print(paste("True positives:",mzc.true.positives))
+print(paste("True negatives:",mzc.true.negatives))
+print(paste("False positives:",mzc.false.positives))
+print(paste("False negatives:",mzc.false.negatives))
+```
+
+## Accuracy ##
+
+```{r}
+#Accuracy = (TP + TN) / (TP + TN + FP + FN)
+mzc.accuracy <- (mzc.true.positives + mzc.true.negatives) /
+        (mzc.true.positives + mzc.true.negatives + mzc.false.positives + mzc.false.negatives)
+print(paste("Accuracy= ", (mzc.accuracy * 100), "%", sep = ""))
+
+```
+
+## Identificacion de desertores ##
+ 
+```{r}
+setwd(local.path)
+load("alumnos.nuevos.R")
+head(alumnos.nuevos, 5)
+str(alumnos.nuevos)
+```
+
+## Evaluar con Red Neuronal
+
+```{r}
+nuevos.result <- compute(neural.net.1, alumnos.nuevos)
+attributes(nuevos.result)
+nuevos.result$net.result <- round(nuevos.result$net.result)
+#nuevos.result$net.result
+head(nuevos.result$net.result,5)
+class(nuevos.result$net.result)
+```
+
+```{r}
+#str(nuevos.result)
+alumnos.desertores.df <- as.data.frame(nuevos.result[[2]])
+desercion <- vector(mode="numeric", length = nrow(alumnos.nuevos))
+
+desercion <- alumnos.desertores.df$V1
+
+alumnos.desertores.df <- cbind(alumnos.nuevos, desercion)
+#alumnos.desertores.df
+head(alumnos.desertores.df,5)
+```
+ 
+Obtenemos la correlacion con pearson
+
+```{r}
+cor.matrix.desertores <- cor(alumnos.desertores.df, method = "pearson", use = "complete.obs")
+corrplot(cor.matrix.desertores)
+```
+ 
+ 
+```{r}
+a<- alumnos.desertores.df[alumnos.desertores.df$desercion == 1,]
+print("Rows and columns")
+print(dim(a))
+```
+```{r}
+alumnos.desertores.df <- a
+```
+ 
+ 
+## Seleccionar alumnos que se predicen van a reprobar 
+Guardamos los desertores para el siguiente paso
+```{r}
+setwd(local.path)
+save(alumnos.desertores.df, file="alumnos.desertores.df.R")
+```
+ 
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

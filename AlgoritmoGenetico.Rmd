@@ -1,0 +1,262 @@
+---
+title: "Proyecto Final - Algoritmo Genetico"
+author: "Casillas, A., González, L., Gómez, J."
+date: "Agosto 3,2020"
+output: rmarkdown::github_document
+---
+
+# Algoritmo Genetico #
+
+Equipo:
+
+* Anna Karen Casillas
+* Josue Emmnanuel Gomez
+* Luis Francisco Gonzalez
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.path = "figure/imgs/README_figs/README-")
+```
+
+## Variables y Dependencias Iniciales
+
+Aqui se especifican las variables generales necesarias para todo el proyecto
+
+```{r}
+#Modificar variable para especificar directorio del Proyecto Final
+user.path <- "/Users/akcasill/Documents/analisisDatos/proyecto/mcc-analisisdatos-final"
+
+local.path <- paste(user.path ,"/data",sep = "")
+local.path.imgs <- paste(user.path ,"/imgs",sep = "")
+```
+Aqui se especifican todas las dependencias que se utilizaran en el proyecto
+
+```{r}
+#Dependencies
+#install.packages("png")
+library(png)
+library(corrplot)
+source("http://www.sthda.com/upload/rquery_cormat.r")
+col<- colorRampPalette(c("blue", "white", "red"))(20)
+#install.packages("factoextra")
+#install.packages("FactoMineR")
+library(FactoMineR)
+library(factoextra)
+#install.packages("genalg")
+library("genalg")
+```
+
+Cargamos los datos
+
+```{r}
+setwd(local.path)
+load("alumnos.desertores.df.R")
+
+```
+
+```{r}
+#alumnos.desertores.df
+head(alumnos.desertores.df,5)
+nrow(alumnos.desertores.df)
+```
+
+## Funciones de soporte ##
+```{r}
+getBest <- function(inTree) {
+  outBest <- inTree$population[inTree$evaluations == min(inTree$best),]
+  return (outBest)
+}  
+
+printStats <- function(inBest) {
+  out.sep <- "--------------------------------------------------------------------------------"
+  out.items.usd.ammount <- inBest %*% items$usd.ammount
+  out.stayingpoints  <- inBest %*% items$stayingpoints 
+  print(out.sep)
+  print("Vector: ")
+  print(inBest)
+  print(paste("Items USD sum: ", out.items.usd.ammount))
+  print(paste("Puntos de estadía de este vector: ", out.stayingpoints))
+  print(out.sep)
+  } 
+```
+
+
+## Función optimizada ##
+
+Definimos la funcion y sus reglas.
+
+```{r}
+
+#Constantes / constraints
+desercion.size <- nrow(alumnos.desertores.df)
+budget.limit.10k <- 10000
+
+#Vectores
+v.item <- c("beca","bienevales","mentoria","psicologo","evento",
+         "asesor","remediales", "visita.empresa","extratemporaneo", "cheertalk", 
+         "viaje")
+v.s.p <- c(90,95,85,70,50,60,80,100,80,85,70)
+v.usd = c(500, 100, 200, 400, 50,250, 2500, 50, 100, 50,10)
+
+#Inicializar 
+items <- data.frame(item= v.item,
+                    stayingpoints = v.s.p,
+                    usd.ammount = v.usd)
+#Igualar dimensión
+for(i in 1:(desercion.size-1)){
+  items <- rbind(items,data.frame(item= v.item,
+                    stayingpoints = v.s.p,
+                    usd.ammount = v.usd))  
+  
+  #Si fuera por columna:
+  #  items <- cbind(items, v.item, v.s.p , v.usd)
+}
+
+fitness.presupuesto.desercion <- function(x) {
+
+    items.usd.ammount <- x %*% items$usd.ammount
+    items.s.p <- x %*% items$stayingpoints
+
+  if (items.usd.ammount > budget.limit.10k ) 
+  {
+    return(0)
+  }
+  else
+  {
+    partial.result <- items.s.p
+    # #"beca","bienevales","mentoria","psicologo","evento","asesor","remediales", "visita.empresa","extratemporaneo", "cheertalk", "viaje"
+    # #   1        2           3           4          5        6          7              8                  9               10        11
+    # #"beca","bienevales","mentoria","psicologo","evento","asesor","remediales", "visita.empresa","extratemporaneo", "cheertalk", "viaje"
+    # #   12        13           14           15          16        17          18       19                 20               21       22
+    
+    alumnos.desertores.df[i,]
+    for(i in 1:desercion.size){
+      start <- 11*i-10
+      end <- 11*i
+      
+      #Regla 1 Si ya tiene Beca
+      if(alumnos.desertores.df[i,]$beca + x[start] > 2){
+        partial.result <- items.s.p - 90
+      }
+      
+      
+      #Regla 2 Si Bienevales Bit 2 (start+1 = 2)
+      if(alumnos.desertores.df[i,]$evalucion.socioeconomica + x[start+1] < 4){
+        partial.result <- items.s.p - 20
+      }else{
+        if(alumnos.desertores.df[i,]$Asist.Total < 0.6){
+          partial.result <- items.s.p + 20
+        }else{
+           partial.result <- items.s.p + 10
+        }
+      }
+      
+      #Regla 3 mentoria Bit 2 (start+2 = bit 3)
+      if(alumnos.desertores.df[i,]$prom.exam + x[start+2] > 10){
+        papartial.result <- items.s.p - 8
+      }
+      #Regla 4 Consultoría Psicológica Bit 4 (start+3 = bit 4)
+      if(alumnos.desertores.df[i,]$evalucion.socioeconomica + x[start+3] < 4){
+        papartial.result <- items.s.p - 30
+      }
+      #Regla 5 Boleto Evento integración Bit 5 (start+4 = bit 5)
+      if(alumnos.desertores.df[i,]$nota.conducta + x[start+4] < 17){
+        papartial.result <- items.s.p + 10
+      }
+      
+      #Regla 6 Asesoria individual 
+      if(mean(alumnos.desertores.df[i,]$prom.exam + alumnos.desertores.df[i,]$prom.trab) < 10){
+        if(x[start+3] == 0){
+          partial.result <- items.s.p + 60
+        }else{
+          partial.result <- items.s.p - 60
+        }
+      }
+      
+      #Reglas 7 Cursos remediales
+      if(alumnos.desertores.df[i,]$promedio.preparatoria < 80){
+         if(x[start+4] == 0){
+          partial.result <- items.s.p + 80
+        }else{
+          partial.result <- items.s.p - 80
+        }
+      }
+      
+      #Regla 8 Visita a emepresa
+      if(alumnos.desertores.df[i,]$cambio.carrera + x[start+5] > 2){
+         partial.result <- items.s.p + 100
+      }
+      
+      if(alumnos.desertores.df[i,]$cambio.carrera + x[start+5] <= 2){
+         partial.result <- items.s.p - 100
+      }
+      
+      #Regla 9 examen extra temp bit 9
+      if(alumnos.desertores.df[i,]$prom.exam + x[start+8] > 12){
+        partial.result <- items.s.p - v.s.p[9]
+      }
+      #Regla 10 platica motivacional 10 (start+1 = 2)
+      if(alumnos.desertores.df[i,]$Asist.Total + x[start+9] > 90){
+        partial.result <- items.s.p - v.s.p[10]
+      }
+      #Regla 11 mentoria altas calificaciones Bit 11 (start+10 = bit 11)
+      if(alumnos.desertores.df[i,]$prom.exam + x[start+10] > 15){
+        partial.result <- items.s.p - v.s.p[11]
+      }
+      
+      
+      
+    }#Fin de reglas
+    return (-items.s.p)
+  }
+}
+#items
+head(items,5)
+```
+
+```{r}
+ga.features <- length(v.item)
+ga.features
+```
+
+Usamos nuestra funcion fit para obtener los mejores cromosomas para el presupuesto.
+Obtenermos el Mejor.
+
+```{r}
+
+set.seed(2020)
+#alumnos.desertores.df
+head(alumnos.desertores.df,5)
+#ga.tree$population[ga.tree$evaluations == min(ga.tree$best),]
+ga.tree <- rbga.bin(size = (ga.features * desercion.size), popSize = 100,
+                    mutationChance = .01,
+                    elitism = 1, iters = 15,
+                    evalFunc = fitness.presupuesto.desercion,
+                    verbose = T
+                    )
+#Calculamos el mejor cromosoma
+best.anti.desertores <- getBest(ga.tree)
+#best.anti.desertores
+head(best.anti.desertores,5)
+```
+
+## Mejor cromosoma ##
+
+imprmimos el mejor cromosoma para repartir el presupuesto
+
+```{r}
+printStats(best.anti.desertores)
+```
+
+```{r}
+for(i in 1:desercion.size){
+  start <- 11*i-10
+  end <- 11*i
+  #print(i)
+  print(best.anti.desertores[start:end])
+}
+
+alumnos.desertores.df$beca
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
